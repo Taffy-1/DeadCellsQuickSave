@@ -1,0 +1,12 @@
+bin/
+obj/
+data/
+settings.json
+*.exe
+*.dll
+*.pdb
+*.user
+*.suo
+.vs/
+selftest-error.log
+STATUS_*.txt
