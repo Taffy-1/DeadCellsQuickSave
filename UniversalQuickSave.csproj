@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>DeadCellsUniversalQuickSave</AssemblyName>
+    <RootNamespace>DeadCellsUniversalQuickSave</RootNamespace>
+    <Product>Dead Cells QuickSave</Product>
+    <Version>1.15.0</Version>
+    <FileVersion>1.15.0.0</FileVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="MainForm.cs" />
+    <Compile Remove="DeathDetector.cs" />
+  </ItemGroup>
+</Project>
