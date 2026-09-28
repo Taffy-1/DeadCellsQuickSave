@@ -1,0 +1,121 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "UniversalQuickSave.csproj"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, test and publish
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Read version
+        id: version
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content "UniversalQuickSave.csproj"
+          $version = $project.Project.PropertyGroup.Version | Select-Object -First 1
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw "Version was not found in UniversalQuickSave.csproj"
+          }
+
+          $tag = "v$version"
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+
+          Write-Host "Version: $version"
+          Write-Host "Tag: $tag"
+
+      - name: Restore
+        run: dotnet restore UniversalQuickSave.csproj
+
+      - name: Rebuild
+        run: dotnet build UniversalQuickSave.csproj -c Release -t:Rebuild --no-restore
+
+      - name: Self-test
+        run: dotnet run --project UniversalQuickSave.csproj -c Release --no-build -- --self-test
+
+      - name: Publish single-file Windows x64 build
+        shell: pwsh
+        run: |
+          dotnet publish UniversalQuickSave.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            -o publish
+
+          New-Item -ItemType Directory -Force -Path "release" | Out-Null
+          Copy-Item "publish/DeadCellsUniversalQuickSave.exe" "release/DeadCellsQuickSave.exe" -Force
+
+          if (-not (Test-Path "release/DeadCellsQuickSave.exe")) {
+            throw "Published executable was not produced."
+          }
+
+          $hash = (Get-FileHash "release/DeadCellsQuickSave.exe" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "DeadCellsQuickSave.exe  SHA-256: $hash" | Set-Content "release/SHA256.txt" -Encoding UTF8
+          Get-Item "release/DeadCellsQuickSave.exe"
+          Get-Content "release/SHA256.txt"
+
+      - name: Create or update GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          $exists = $false
+
+          gh release view "$env:TAG" --repo "$env:GITHUB_REPOSITORY" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            $exists = $true
+          }
+
+          if (-not $exists) {
+            gh release create "$env:TAG" `
+              "release/DeadCellsQuickSave.exe#DeadCellsQuickSave.exe" `
+              "release/SHA256.txt#SHA256.txt" `
+              --repo "$env:GITHUB_REPOSITORY" `
+              --target "$env:GITHUB_SHA" `
+              --title "Dead Cells QuickSave $env:TAG" `
+              --generate-notes
+          }
+          else {
+            gh release upload "$env:TAG" `
+              "release/DeadCellsQuickSave.exe#DeadCellsQuickSave.exe" `
+              "release/SHA256.txt#SHA256.txt" `
+              --repo "$env:GITHUB_REPOSITORY" `
+              --clobber
+          }
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeadCellsQuickSave-${{ steps.version.outputs.version }}-win-x64
+          path: |
+            release/DeadCellsQuickSave.exe
+            release/SHA256.txt
+          if-no-files-found: error
+          retention-days: 14
